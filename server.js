@@ -130,6 +130,89 @@ app.post('/api/send-to-notion', async (req, res) => {
     }
 });
 
+// Webhook endpoint for G (and others) to post directly
+app.post('/api/webhook', async (req, res) => {
+    try {
+        const { shortName, content, contentType, ...otherFields } = req.body;
+        
+        // Short name is required
+        if (!shortName) {
+            return res.status(400).json({ error: 'shortName is required' });
+        }
+        
+        // Use content analysis if contentType not provided
+        let analysis = {};
+        if (contentType) {
+            // Use provided contentType for routing
+            if (contentType.toLowerCase() === 'lessons') {
+                analysis = { contentType: 'Lesson', mapLocation: 'Course 3', voiceMode: 'Teacher Mode' };
+            } else if (contentType.toLowerCase() === 'social') {
+                analysis = { contentType: 'Social Post', mapLocation: 'Content Calendar', voiceMode: 'Creator Mode' };
+            } else if (contentType.toLowerCase() === 'concept') {
+                analysis = { contentType: 'Concept', mapLocation: 'Sticky DB', voiceMode: 'Auto-Detect' };
+            } else {
+                analysis = { contentType: 'Concept', mapLocation: 'Sticky DB', voiceMode: 'Auto-Detect' };
+            }
+        } else if (content) {
+            // Analyze content if no contentType provided
+            analysis = analyzeContent(content);
+        } else {
+            // Default if only shortName provided
+            analysis = { contentType: 'Concept', mapLocation: 'Sticky DB', voiceMode: 'Auto-Detect' };
+        }
+        
+        // Create Notion page
+        const response = await notion.pages.create({
+            parent: {
+                database_id: DATABASE_ID
+            },
+            properties: {
+                'Short Name': {
+                    title: [
+                        {
+                            text: {
+                                content: shortName
+                            }
+                        }
+                    ]
+                },
+                'Description': {
+                    rich_text: [
+                        {
+                            text: {
+                                content: content || shortName
+                            }
+                        }
+                    ]
+                },
+                'H_Notes': {
+                    rich_text: [
+                        {
+                            text: {
+                                content: `Auto-generated via ZooCrewOS webhook. Voice Mode: ${analysis.voiceMode}, Content Type: ${analysis.contentType}, Routed to: ${analysis.mapLocation}`
+                            }
+                        }
+                    ]
+                }
+            }
+        });
+
+        res.json({
+            success: true,
+            notionUrl: response.url,
+            message: 'Content successfully sent to Notion via webhook!',
+            analysis: analysis
+        });
+
+    } catch (error) {
+        console.error('Error in webhook:', error);
+        res.status(500).json({
+            error: 'Failed to process webhook',
+            details: error.message
+        });
+    }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ZooCrewOS is alive and ready!' });
