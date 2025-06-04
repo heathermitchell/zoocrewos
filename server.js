@@ -103,7 +103,7 @@ app.post('/api/send-to-notion', async (req, res) => {
                         }
                     ]
                 },
-                'H Notes': {
+                'H_Notes': {
                     rich_text: [
                         {
                             text: {
