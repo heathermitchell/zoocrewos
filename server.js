@@ -12,17 +12,24 @@ const notion = new Client({
     auth: process.env.NOTION_TOKEN
 });
 
-// Initialize Firebase Admin
-admin.initializeApp({
-    credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-    }),
-    storageBucket: 'zoocrewos-transcriptstorage.firebasestorage.app'
-});
-
-const bucket = admin.storage().bucket();
+// Initialize Firebase Admin with error handling
+let bucket = null;
+try {
+    admin.initializeApp({
+        credential: admin.credential.cert({
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+        }),
+        storageBucket: 'zoocrewos-transcriptstorage.firebasestorage.app'
+    });
+    
+    bucket = admin.storage().bucket();
+    console.log('✅ Firebase initialized successfully');
+} catch (error) {
+    console.error('❌ Firebase initialization failed:', error.message);
+    console.log('Server will continue without Firebase functionality');
+}
 
 const DATABASE_ID = '200d36e54a7280efa27def519aa21671';
 
@@ -229,6 +236,14 @@ app.post('/api/webhook', async (req, res) => {
 // Transcript upload endpoint for Firebase + Notion integration
 app.post('/api/upload-transcript', async (req, res) => {
     try {
+        // Check if Firebase is available
+        if (!bucket) {
+            return res.status(500).json({ 
+                error: 'Firebase not initialized',
+                details: 'Check Firebase environment variables' 
+            });
+        }
+        
         const { 
             transcript_content, 
             agent = 'Unknown', 
@@ -331,7 +346,22 @@ app.post('/api/upload-transcript', async (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'ZooCrewOS is alive and ready!' });
+    res.json({ 
+        status: 'ZooCrewOS is alive and ready!',
+        firebase: bucket ? 'connected' : 'not initialized',
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Debug endpoint to check Firebase credentials (without exposing them)
+app.get('/api/firebase-status', (req, res) => {
+    res.json({
+        firebase_initialized: !!bucket,
+        has_project_id: !!process.env.FIREBASE_PROJECT_ID,
+        has_client_email: !!process.env.FIREBASE_CLIENT_EMAIL,
+        has_private_key: !!process.env.FIREBASE_PRIVATE_KEY,
+        project_id: process.env.FIREBASE_PROJECT_ID || 'not set'
+    });
 });
 
 app.listen(PORT, () => {
