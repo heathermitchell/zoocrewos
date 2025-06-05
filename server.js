@@ -2,6 +2,7 @@ const express = require('express');
 const { Client } = require('@notionhq/client');
 const cors = require('cors');
 const path = require('path');
+const admin = require('firebase-admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,6 +11,18 @@ const PORT = process.env.PORT || 3000;
 const notion = new Client({
     auth: process.env.NOTION_TOKEN
 });
+
+// Initialize Firebase Admin
+admin.initializeApp({
+    credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+    }),
+    storageBucket: 'zoocrewos-transcriptstorage.firebasestorage.app'
+});
+
+const bucket = admin.storage().bucket();
 
 const DATABASE_ID = '200d36e54a7280efa27def519aa21671';
 
@@ -208,6 +221,109 @@ app.post('/api/webhook', async (req, res) => {
         console.error('Error in webhook:', error);
         res.status(500).json({
             error: 'Failed to process webhook',
+            details: error.message
+        });
+    }
+});
+
+// Transcript upload endpoint for Firebase + Notion integration
+app.post('/api/upload-transcript', async (req, res) => {
+    try {
+        const { 
+            transcript_content, 
+            agent = 'Unknown', 
+            conversation_name = 'Untitled',
+            short_name,
+            description 
+        } = req.body;
+        
+        if (!transcript_content) {
+            return res.status(400).json({ error: 'transcript_content is required' });
+        }
+        
+        // Generate filename: YYYY-MM-DD_AGENT_CONVO-TITLE.md
+        const date = new Date();
+        const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+        const cleanConvoName = conversation_name.replace(/[^a-zA-Z0-9-]/g, '-');
+        const filename = `${dateStr}_${agent}_${cleanConvoName}.md`;
+        
+        // Upload to Firebase Storage
+        const file = bucket.file(`transcripts/2025/${dateStr.substring(0, 7)}/${filename}`);
+        
+        await file.save(transcript_content, {
+            metadata: {
+                contentType: 'text/markdown',
+                metadata: {
+                    agent: agent,
+                    conversationName: conversation_name,
+                    uploadDate: date.toISOString()
+                }
+            }
+        });
+        
+        // Make file publicly accessible
+        await file.makePublic();
+        
+        // Get public URL
+        const transcript_url = `https://storage.googleapis.com/zoocrewos-transcriptstorage.firebasestorage.app/transcripts/2025/${dateStr.substring(0, 7)}/${filename}`;
+        
+        // Create Notion entry with transcript_url
+        const notionResponse = await notion.pages.create({
+            parent: {
+                database_id: DATABASE_ID
+            },
+            properties: {
+                'Short Name': {
+                    title: [
+                        {
+                            text: {
+                                content: short_name || `${agent} - ${conversation_name}`
+                            }
+                        }
+                    ]
+                },
+                'Description': {
+                    rich_text: [
+                        {
+                            text: {
+                                content: description || `Transcript: ${conversation_name}`
+                            }
+                        }
+                    ]
+                },
+                'H_Notes': {
+                    rich_text: [
+                        {
+                            text: {
+                                content: `Auto-generated transcript upload. Agent: ${agent}, Date: ${dateStr}`
+                            }
+                        }
+                    ]
+                },
+                'transcript_url': {
+                    rich_text: [
+                        {
+                            text: {
+                                content: transcript_url
+                            }
+                        }
+                    ]
+                }
+            }
+        });
+
+        res.json({
+            success: true,
+            transcript_url: transcript_url,
+            notion_url: notionResponse.url,
+            filename: filename,
+            message: 'Transcript successfully uploaded to Firebase and linked in Notion!'
+        });
+
+    } catch (error) {
+        console.error('Error uploading transcript:', error);
+        res.status(500).json({
+            error: 'Failed to upload transcript',
             details: error.message
         });
     }
