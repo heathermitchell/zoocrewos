@@ -4,30 +4,23 @@
 services:
   - type: web
     name: zoocrewos-n8n
-    env: docker
-    image: n8nio/n8n:latest
-    envVars:
+    runtime: docker
+    plan: starter
+    dockerContext: .
+    dockerCommand: n8n start
+    env:
       - key: N8N_BASIC_AUTH_ACTIVE
-        value: "true"
+        value: true
       - key: N8N_BASIC_AUTH_USER
-        value: "turtleshuffle"
+        value: turtleshuffle
       - key: N8N_BASIC_AUTH_PASSWORD
-        value: "snowflakeconfetti2025!"
-      - key: N8N_HOST
-        generateValue: true
+        value: snowflakeconfetti2025!
       - key: N8N_PORT
-        value: "5678"
+        value: 5678
       - key: N8N_PROTOCOL
-        value: "https"
-      - key: WEBHOOK_URL
-        value: "https://zoocrewos-n8n.onrender.com"
+        value: https
       - key: DB_TYPE
-        value: "sqlite"
+        value: sqlite
       - key: N8N_USER_FOLDER
-        value: "/data"
-      - key: N8N_LOG_LEVEL
-        value: "info"
-    disk:
-      name: n8n-data
-      mountPath: /data
-      sizeGB: 1
+        value: /data
+    dockerfilePath: ./Dockerfile.n8n
