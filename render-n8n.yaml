@@ -1,0 +1,33 @@
+# Render deployment configuration for N8N
+# This will deploy N8N alongside ZooCrewOS for G's integration
+
+services:
+  - type: web
+    name: zoocrewos-n8n
+    env: docker
+    dockerfilePath: ./Dockerfile.n8n
+    envVars:
+      - key: N8N_BASIC_AUTH_ACTIVE
+        value: "true"
+      - key: N8N_BASIC_AUTH_USER
+        value: "turtleshuffle"
+      - key: N8N_BASIC_AUTH_PASSWORD
+        value: "snowflakeconfetti2025!"
+      - key: N8N_HOST
+        generateValue: true
+      - key: N8N_PORT
+        value: "5678"
+      - key: N8N_PROTOCOL
+        value: "https"
+      - key: WEBHOOK_URL
+        value: "https://zoocrewos-n8n.onrender.com"
+      - key: DB_TYPE
+        value: "sqlite"
+      - key: N8N_USER_FOLDER
+        value: "/data"
+      - key: N8N_LOG_LEVEL
+        value: "info"
+    disk:
+      name: n8n-data
+      mountPath: /data
+      sizeGB: 1
