@@ -4,8 +4,8 @@
 services:
   - type: web
     name: n8n
-    env: image
-    image: "n8nio/n8n"
+    env: Docker
+    image: "n8nio/n8n:latest"
     plan: free
     envVars:
       - key: N8N_BASIC_AUTH_ACTIVE
