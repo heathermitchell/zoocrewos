@@ -4,7 +4,7 @@
 services:
   - type: web
     name: n8n
-    env: docker
+    env: image
     image: "n8nio/n8n"
     plan: free
     envVars:
