@@ -1,9 +1,9 @@
 FROM n8nio/n8n:latest
 
-# Set working directory
+# Use the default working directory from the base image
 WORKDIR /home/node
 
-# Switch to root to create directories
+# Switch to root to ensure proper permissions
 USER root
 RUN mkdir -p /home/node/.n8n && chown node:node /home/node/.n8n
 
@@ -16,5 +16,5 @@ EXPOSE 5678
 # Set environment variables
 ENV N8N_USER_FOLDER=/home/node/.n8n
 
-# Start N8N using npx to ensure it's found
-CMD ["npx", "n8n", "start"]
+# Use the exact same command as the official N8N image
+CMD ["node", "/usr/local/lib/node_modules/n8n/bin/n8n", "start"]
