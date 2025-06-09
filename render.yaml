@@ -3,24 +3,14 @@
 
 services:
   - type: web
-    name: zoocrewos-n8n
-    runtime: docker
-    plan: starter
-    dockerContext: .
-    dockerCommand: n8n start
-    env:
+    name: n8n
+    env: docker
+    image: n8nio/n8n
+    plan: free
+    envVars:
       - key: N8N_BASIC_AUTH_ACTIVE
-        value: true
+        value: "true"
       - key: N8N_BASIC_AUTH_USER
-        value: turtleshuffle
+        value: yourusername
       - key: N8N_BASIC_AUTH_PASSWORD
-        value: snowflakeconfetti2025!
-      - key: N8N_PORT
-        value: 5678
-      - key: N8N_PROTOCOL
-        value: https
-      - key: DB_TYPE
-        value: sqlite
-      - key: N8N_USER_FOLDER
-        value: /data
-    dockerfilePath: ./Dockerfile.n8n
+        value: yourpassword
