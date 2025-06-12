@@ -306,6 +306,142 @@ app.post('/api/send-message', (req, res) => {
     timestamp: chatMessage.timestamp 
   });
 });
+// Add these endpoints to your server.js file
+
+// Emmy AI Response Endpoint
+app.post("/api/emmy-response", (req, res) => {
+  try {
+    const { message, sender, timestamp, type } = req.body;
+    
+    console.log("Emmy Response Received:", {
+      sender,
+      message: message ? message.substring(0, 100) + "..." : "No message",
+      timestamp,
+      type
+    });
+
+    // Validate required fields
+    if (!message || !sender) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: message and sender"
+      });
+    }
+
+    // Create message object for WebSocket broadcast
+    const aiMessage = {
+      id: Date.now().toString(),
+      sender: sender,
+      message: message,
+      timestamp: timestamp || new Date().toISOString(),
+      type: type || "ai_response",
+      source: "n8n_emmy"
+    };
+
+    // Broadcast to all connected WebSocket clients
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({
+          type: "ai_message",
+          data: aiMessage
+        }));
+      }
+    });
+
+    // Log successful broadcast
+    console.log("Emmy message broadcasted to", wss.clients.size, "clients");
+
+    // Return success response
+    res.json({
+      success: true,
+      message: "Emmy response processed and broadcasted",
+      messageId: aiMessage.id,
+      clientCount: wss.clients.size
+    });
+
+  } catch (error) {
+    console.error("Emmy Response Error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to process Emmy response",
+      details: error.message
+    });
+  }
+});
+
+// Galen AI Response Endpoint  
+app.post("/api/galen-response", (req, res) => {
+  try {
+    const { message, sender, timestamp, type } = req.body;
+    
+    console.log("Galen Response Received:", {
+      sender,
+      message: message ? message.substring(0, 100) + "..." : "No message",
+      timestamp,
+      type
+    });
+
+    // Validate required fields
+    if (!message || !sender) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: message and sender"
+      });
+    }
+
+    // Create message object for WebSocket broadcast
+    const aiMessage = {
+      id: Date.now().toString(),
+      sender: sender,
+      message: message,
+      timestamp: timestamp || new Date().toISOString(),
+      type: type || "ai_response",
+      source: "n8n_galen"
+    };
+
+    // Broadcast to all connected WebSocket clients
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({
+          type: "ai_message",
+          data: aiMessage
+        }));
+      }
+    });
+
+    // Log successful broadcast
+    console.log("Galen message broadcasted to", wss.clients.size, "clients");
+
+    // Return success response
+    res.json({
+      success: true,
+      message: "Galen response processed and broadcasted",
+      messageId: aiMessage.id,
+      clientCount: wss.clients.size
+    });
+
+  } catch (error) {
+    console.error("Galen Response Error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to process Galen response",
+      details: error.message
+    });
+  }
+});
+
+// Optional: Health check endpoint for AI integrations
+app.get("/api/ai-status", (req, res) => {
+  res.json({
+    success: true,
+    endpoints: {
+      emmy: "/api/emmy-response",
+      galen: "/api/galen-response"
+    },
+    websocket_clients: wss.clients.size,
+    server_time: new Date().toISOString()
+  });
+});
 
 // Start server
 const PORT = process.env.PORT || 3000;
