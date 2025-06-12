@@ -34,7 +34,7 @@ const TEAM_MEMBERS = {
     color: '#F59E0B',
     role: 'Creative Strategist'
   },
-  'G': {
+  'galen': {
     name: 'G',
     emoji: '🐢',
     color: '#10B981',
