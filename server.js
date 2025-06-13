@@ -1,15 +1,38 @@
-
-// WebSocket Server for ZooCrewOS 3-Way Chat
-// Real-time communication between Heather, Emmy, and Galen
+// ZooCrewOS Railway Server - Complete Integration
+// WebSocket + Firebase + Notion + n8n Integration
 
 const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
 const path = require('path');
 
+// Firebase Admin SDK
+const admin = require('firebase-admin');
+
+// Notion Client
+const { Client } = require('@notionhq/client');
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+
+// Initialize Firebase Admin
+let firebaseApp;
+try {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  firebaseApp = admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    storageBucket: `${serviceAccount.project_id}.appspot.com`
+  });
+  console.log('✅ Firebase Admin initialized successfully');
+} catch (error) {
+  console.error('❌ Firebase initialization failed:', error.message);
+}
+
+// Initialize Notion Client
+const notion = new Client({
+  auth: process.env.NOTION_TOKEN
+});
 
 // Store connected clients and their identities
 const clients = new Map();
@@ -182,6 +205,11 @@ function handleChatMessage(ws, data) {
   console.log(`Message from ${client.identity}: ${message.substring(0, 50)}...`);
 
   broadcast(chatMessage);
+
+  // Save to Firebase Storage (async, don't wait)
+  saveConversationToFirebase().catch(err => 
+    console.error('Firebase save error:', err.message)
+  );
 }
 
 function handleTypingIndicator(ws, data) {
@@ -229,15 +257,101 @@ function generateMessageId() {
   return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
+// Firebase Storage Functions
+async function saveConversationToFirebase() {
+  if (!firebaseApp || messageHistory.length === 0) return;
+
+  try {
+    const bucket = admin.storage().bucket();
+    const timestamp = new Date().toISOString();
+    const filename = `conversations/chat_${timestamp.split('T')[0]}_${Date.now()}.json`;
+    
+    const conversationData = {
+      timestamp,
+      messages: messageHistory,
+      participants: getConnectedUsers(),
+      messageCount: messageHistory.length
+    };
+
+    const file = bucket.file(filename);
+    await file.save(JSON.stringify(conversationData, null, 2), {
+      metadata: {
+        contentType: 'application/json'
+      }
+    });
+
+    console.log('✅ Conversation saved to Firebase:', filename);
+    return filename;
+  } catch (error) {
+    console.error('❌ Firebase save error:', error.message);
+    throw error;
+  }
+}
+
+// Notion Integration Functions
+async function saveToNotion(content, analysis = {}) {
+  try {
+    const response = await notion.pages.create({
+      parent: {
+        database_id: process.env.NOTION_DATABASE_ID
+      },
+      properties: {
+        'Short Name': {
+          title: [
+            {
+              text: {
+                content: content.substring(0, 100) + (content.length > 100 ? '...' : '')
+              }
+            }
+          ]
+        },
+        'Description': {
+          rich_text: [
+            {
+              text: {
+                content: content
+              }
+            }
+          ]
+        },
+        'H Notes': {
+          rich_text: [
+            {
+              text: {
+                content: `Auto-generated via ZooCrewOS. Analysis: ${JSON.stringify(analysis)}`
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    console.log('✅ Content saved to Notion:', response.id);
+    return response;
+  } catch (error) {
+    console.error('❌ Notion save error:', error.message);
+    throw error;
+  }
+}
+
+// API Endpoints
+
+// Health check
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     connectedClients: clients.size,
     messageHistory: messageHistory.length,
+    services: {
+      firebase: !!firebaseApp,
+      notion: !!process.env.NOTION_TOKEN,
+      websocket: wss.clients.size
+    },
     timestamp: new Date().toISOString()
   });
 });
 
+// Manual message sending (for n8n integration)
 app.post('/api/send-message', (req, res) => {
   const { identity, message, tags = [] } = req.body;
 
@@ -275,7 +389,156 @@ app.post('/api/send-message', (req, res) => {
   });
 });
 
+// Emmy AI Response Endpoint (for n8n)
+app.post('/api/emmy-response', (req, res) => {
+  try {
+    const { message, timestamp } = req.body;
+
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Message is required'
+      });
+    }
+
+    const aiMessage = {
+      id: generateMessageId(),
+      type: 'chat_message',
+      sender: 'emmy',
+      senderInfo: TEAM_MEMBERS['emmy'],
+      message: message.trim(),
+      tags: ['ai-response'],
+      pinned: false,
+      timestamp: timestamp || new Date().toISOString(),
+      source: 'n8n'
+    };
+
+    messageHistory.push(aiMessage);
+    if (messageHistory.length > MAX_HISTORY) {
+      messageHistory.shift();
+    }
+
+    broadcast(aiMessage);
+
+    console.log('✅ Emmy AI response processed');
+
+    res.json({
+      success: true,
+      messageId: aiMessage.id,
+      timestamp: aiMessage.timestamp
+    });
+
+  } catch (error) {
+    console.error('❌ Emmy response error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process Emmy response'
+    });
+  }
+});
+
+// Galen AI Response Endpoint (for n8n)
+app.post('/api/galen-response', (req, res) => {
+  try {
+    const { message, timestamp } = req.body;
+
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Message is required'
+      });
+    }
+
+    const aiMessage = {
+      id: generateMessageId(),
+      type: 'chat_message',
+      sender: 'galen',
+      senderInfo: TEAM_MEMBERS['galen'],
+      message: message.trim(),
+      tags: ['ai-response'],
+      pinned: false,
+      timestamp: timestamp || new Date().toISOString(),
+      source: 'n8n'
+    };
+
+    messageHistory.push(aiMessage);
+    if (messageHistory.length > MAX_HISTORY) {
+      messageHistory.shift();
+    }
+
+    broadcast(aiMessage);
+
+    console.log('✅ Galen AI response processed');
+
+    res.json({
+      success: true,
+      messageId: aiMessage.id,
+      timestamp: aiMessage.timestamp
+    });
+
+  } catch (error) {
+    console.error('❌ Galen response error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process Galen response'
+    });
+  }
+});
+
+// Content capture endpoint (like the original chirpee functionality)
+app.post('/api/capture-content', async (req, res) => {
+  try {
+    const { content, tags = [] } = req.body;
+
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Content is required' });
+    }
+
+    // Save to Notion
+    const notionResponse = await saveToNotion(content, { tags });
+
+    // Save conversation snapshot to Firebase
+    const firebaseFile = await saveConversationToFirebase();
+
+    res.json({
+      success: true,
+      notionId: notionResponse.id,
+      firebaseFile,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Content capture error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to capture content'
+    });
+  }
+});
+
+// AI Status endpoint
+app.get('/api/ai-status', (req, res) => {
+  res.json({
+    success: true,
+    endpoints: {
+      emmy: '/api/emmy-response',
+      galen: '/api/galen-response'
+    },
+    websocket_clients: wss.clients.size,
+    services: {
+      firebase: !!firebaseApp,
+      notion: !!process.env.NOTION_TOKEN
+    },
+    server_time: new Date().toISOString()
+  });
+});
+
+// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 ZooCrewOS WebSocket Server running on port ${PORT}`);
+  console.log(`🚀 ZooCrewOS Server running on port ${PORT}`);
+  console.log(`📡 WebSocket ready for real-time chat`);
+  console.log(`🔥 Firebase integration: ${firebaseApp ? 'ACTIVE' : 'INACTIVE'}`);
+  console.log(`📝 Notion integration: ${process.env.NOTION_TOKEN ? 'ACTIVE' : 'INACTIVE'}`);
+  console.log(`💜 Ready for Emmy, Galen, and Heather!`);
 });
