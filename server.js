@@ -389,15 +389,43 @@ app.post('/api/send-message', (req, res) => {
   });
 });
 
+// Helper function to extract message from different AI response formats
+function extractMessage(data) {
+  // Handle OpenAI simplified output format (Galen)
+  if (typeof data.message === 'string') {
+    return data.message;
+  }
+  
+  // Handle Anthropic format (Emmy)
+  if (data.content && Array.isArray(data.content) && data.content[0] && data.content[0].text) {
+    return data.content[0].text;
+  }
+  
+  // Handle direct message string
+  if (typeof data === 'string') {
+    return data;
+  }
+  
+  // Fallback: look for any text content
+  if (data.text) {
+    return data.text;
+  }
+  
+  return null;
+}
+
 // Emmy AI Response Endpoint (for n8n)
 app.post('/api/emmy-response', (req, res) => {
   try {
-    const { message, timestamp } = req.body;
+    const extractedMessage = extractMessage(req.body);
+    const { timestamp } = req.body;
 
-    if (!message) {
+    if (!extractedMessage) {
+      console.log('Emmy request body:', JSON.stringify(req.body, null, 2));
       return res.status(400).json({
         success: false,
-        error: 'Message is required'
+        error: 'Message could not be extracted from request',
+        receivedData: req.body
       });
     }
 
@@ -406,7 +434,7 @@ app.post('/api/emmy-response', (req, res) => {
       type: 'chat_message',
       sender: 'emmy',
       senderInfo: TEAM_MEMBERS['emmy'],
-      message: message.trim(),
+      message: extractedMessage.trim(),
       tags: ['ai-response'],
       pinned: false,
       timestamp: timestamp || new Date().toISOString(),
@@ -420,7 +448,7 @@ app.post('/api/emmy-response', (req, res) => {
 
     broadcast(aiMessage);
 
-    console.log('✅ Emmy AI response processed');
+    console.log('✅ Emmy AI response processed:', extractedMessage.substring(0, 50) + '...');
 
     res.json({
       success: true,
@@ -432,7 +460,8 @@ app.post('/api/emmy-response', (req, res) => {
     console.error('❌ Emmy response error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to process Emmy response'
+      error: 'Failed to process Emmy response',
+      details: error.message
     });
   }
 });
@@ -440,12 +469,15 @@ app.post('/api/emmy-response', (req, res) => {
 // Galen AI Response Endpoint (for n8n)
 app.post('/api/galen-response', (req, res) => {
   try {
-    const { message, timestamp } = req.body;
+    const extractedMessage = extractMessage(req.body);
+    const { timestamp } = req.body;
 
-    if (!message) {
+    if (!extractedMessage) {
+      console.log('Galen request body:', JSON.stringify(req.body, null, 2));
       return res.status(400).json({
         success: false,
-        error: 'Message is required'
+        error: 'Message could not be extracted from request',
+        receivedData: req.body
       });
     }
 
@@ -454,7 +486,7 @@ app.post('/api/galen-response', (req, res) => {
       type: 'chat_message',
       sender: 'galen',
       senderInfo: TEAM_MEMBERS['galen'],
-      message: message.trim(),
+      message: extractedMessage.trim(),
       tags: ['ai-response'],
       pinned: false,
       timestamp: timestamp || new Date().toISOString(),
@@ -468,7 +500,7 @@ app.post('/api/galen-response', (req, res) => {
 
     broadcast(aiMessage);
 
-    console.log('✅ Galen AI response processed');
+    console.log('✅ Galen AI response processed:', extractedMessage.substring(0, 50) + '...');
 
     res.json({
       success: true,
@@ -480,7 +512,8 @@ app.post('/api/galen-response', (req, res) => {
     console.error('❌ Galen response error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to process Galen response'
+      error: 'Failed to process Galen response',
+      details: error.message
     });
   }
 });
