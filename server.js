@@ -19,7 +19,19 @@ const wss = new WebSocket.Server({ server });
 // Initialize Firebase Admin
 let firebaseApp;
 try {
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  // Use individual environment variables instead of JSON string
+  const serviceAccount = {
+    type: "service_account",
+    project_id: process.env.FIREBASE_PROJECT_ID,
+    private_key: process.env.FIREBASE_PRIVATE_KEY,
+    client_email: process.env.FIREBASE_CLIENT_EMAIL
+  };
+
+  // Validate that all required Firebase vars are present
+  if (!serviceAccount.project_id || !serviceAccount.private_key || !serviceAccount.client_email) {
+    throw new Error('Missing required Firebase environment variables');
+  }
+
   firebaseApp = admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     storageBucket: `${serviceAccount.project_id}.appspot.com`
